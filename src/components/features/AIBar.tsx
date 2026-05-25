@@ -100,10 +100,12 @@ export function AIBar() {
     addTask, scheduleToday, completeTask, updateTask, addProject,
   } = useStore()
 
-  const [input, setInput]   = useState('')
-  const [open, setOpen]     = useState(false)
-  const inputRef            = useRef<HTMLTextAreaElement>(null)
-  const bottomRef           = useRef<HTMLDivElement>(null)
+  const [input, setInput]       = useState('')
+  const [open, setOpen]         = useState(false)
+  const [applying, setApplying] = useState<number | null>(null)
+  const [applyError, setApplyError] = useState('')
+  const inputRef                = useRef<HTMLTextAreaElement>(null)
+  const bottomRef               = useRef<HTMLDivElement>(null)
 
   // Открываем панель при получении ответа
   useEffect(() => {
@@ -143,21 +145,40 @@ export function AIBar() {
   }
 
   const applyActions = async (actions: AIAction[], msgIndex: number) => {
-    for (const action of actions) {
-      if (action.type === 'create_task')    await addTask({ ...action.task, id: nanoid() })
-      else if (action.type === 'create_project') await addProject({ title: '', status: 'active', ...action.project })
-      else if (action.type === 'schedule_today') for (const id of action.taskIds) await scheduleToday(id)
-      else if (action.type === 'complete_task')  await completeTask(action.taskId)
-      else if (action.type === 'link_goal')      await updateTask(action.entityId, { goalId: action.goalId })
-      else if (action.type === 'decompose')      for (const sub of action.subtasks) await addTask({ ...sub })
+    setApplying(msgIndex)
+    setApplyError('')
+    try {
+      for (const action of actions) {
+        if (action.type === 'create_task') {
+          await addTask({ ...action.task })
+        } else if (action.type === 'create_project') {
+          await addProject({ title: '', status: 'active', ...action.project })
+        } else if (action.type === 'schedule_today') {
+          for (const id of action.taskIds) await scheduleToday(id)
+        } else if (action.type === 'complete_task') {
+          await completeTask(action.taskId)
+        } else if (action.type === 'link_goal') {
+          await updateTask(action.entityId, { goalId: action.goalId })
+        } else if (action.type === 'decompose') {
+          for (const sub of action.subtasks) await addTask({ ...sub })
+        }
+      }
+      // Используем getState() чтобы не захватывать устаревшие messages из замыкания
+      const fresh = useStore.getState().aiMessages
+      setAIMessages(fresh.map((m: AIMessage, i: number) =>
+        i === msgIndex ? { ...m, pending: false } : m
+      ))
+    } catch (err) {
+      console.error('[AIBar] applyActions failed:', err)
+      setApplyError(err instanceof Error ? err.message : 'Ошибка применения')
+    } finally {
+      setApplying(null)
     }
-    setAIMessages(aiMessages.map((m: AIMessage, i: number) =>
-      i === msgIndex ? { ...m, pending: false } : m
-    ))
   }
 
   const discardActions = (msgIndex: number) => {
-    setAIMessages(aiMessages.map((m: AIMessage, i: number) =>
+    const fresh = useStore.getState().aiMessages
+    setAIMessages(fresh.map((m: AIMessage, i: number) =>
       i === msgIndex ? { ...m, pending: false, actions: undefined } : m
     ))
   }
@@ -232,22 +253,32 @@ export function AIBar() {
 
                   {/* Предложенные действия */}
                   {msg.pending && msg.actions && msg.actions.length > 0 && (
-                    <div className="mt-3 flex items-center gap-2 border-t border-surface-200 dark:border-surface-600 pt-3">
-                      <span className="text-xs text-surface-500 flex-1">
-                        {ru.ai.pendingActions(msg.actions.length)}
-                      </span>
-                      <button
-                        onClick={() => applyActions(msg.actions!, i)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-accent-500 text-white text-xs font-medium"
-                      >
-                        <Check size={12} /> Применить
-                      </button>
-                      <button
-                        onClick={() => discardActions(i)}
-                        className="p-1.5 rounded-xl hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-400"
-                      >
-                        <X size={12} />
-                      </button>
+                    <div className="mt-3 space-y-2 border-t border-surface-200 dark:border-surface-600 pt-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-surface-500 flex-1">
+                          {ru.ai.pendingActions(msg.actions.length)}
+                        </span>
+                        <button
+                          onClick={() => applyActions(msg.actions!, i)}
+                          disabled={applying === i}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-accent-500 text-white text-xs font-medium disabled:opacity-60 transition-opacity"
+                        >
+                          {applying === i
+                            ? <><Loader2 size={12} className="animate-spin" /> Применяю…</>
+                            : <><Check size={12} /> Применить</>
+                          }
+                        </button>
+                        <button
+                          onClick={() => discardActions(i)}
+                          disabled={applying === i}
+                          className="p-1.5 rounded-xl hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-400 disabled:opacity-40"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                      {applyError && applying === null && (
+                        <p className="text-xs text-red-500">{applyError}</p>
+                      )}
                     </div>
                   )}
 
