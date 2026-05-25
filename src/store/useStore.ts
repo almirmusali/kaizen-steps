@@ -8,6 +8,7 @@ import { aiSettingsRepo } from '../db/repositories/aiSettings'
 import { reviewsRepo }    from '../db/repositories/reviews'
 import { timeRepo }       from '../db/repositories/time'
 import { todayStr }       from '../utils/date'
+import { getNextSuggestion, type NextSuggestion } from '../services/autoNext'
 
 type Screen = 'home' | 'inbox' | 'projects' | 'goals' | 'review' | 'journal' | 'aiSettings'
 type Theme  = 'light' | 'dark'
@@ -32,6 +33,11 @@ interface State {
   // AI чат
   aiMessages: AIMessage[]
   aiLoading:  boolean
+
+  // Авто-следующий шаг
+  nextSuggestion:        NextSuggestion | null
+  nextSuggestionLoading: boolean
+  dismissSuggestion:     () => void
 
   // Загрузка всех данных
   loadAll: () => Promise<void>
@@ -92,6 +98,10 @@ export const useStore = create<State>((set, get) => ({
   aiMessages:   [],
   aiLoading:    false,
 
+  nextSuggestion:        null,
+  nextSuggestionLoading: false,
+  dismissSuggestion:     () => set({ nextSuggestion: null }),
+
   loadAll: async () => {
     const [goals, projects, tasks, inbox, aiSettings, journalNotes] = await Promise.all([
       goalsRepo.getActive(),
@@ -137,13 +147,32 @@ export const useStore = create<State>((set, get) => ({
   },
   completeTask: async (id) => {
     await tasksRepo.complete(id)
-    const task = get().tasks.find(t => t.id === id)
+    const { tasks, goals, projects, aiSettings } = get()
+    const task = tasks.find(t => t.id === id)
     if (task?.projectId) {
       await projectsRepo.addTime(task.projectId, task.timeSpent)
     }
-    set(s => ({
-      tasks: s.tasks.map(t => t.id === id ? { ...t, status: 'done', completedAt: new Date() } : t),
-    }))
+
+    // Обновляем статус в сторе
+    const updatedTasks = tasks.map(t => t.id === id ? { ...t, status: 'done' as const, completedAt: new Date() } : t)
+    set({ tasks: updatedTasks, nextSuggestion: null, nextSuggestionLoading: true })
+
+    // Запускаем AI-выбор следующего шага асинхронно
+    if (task) {
+      getNextSuggestion({
+        completedTask: task,
+        tasks:         updatedTasks,
+        goals,
+        projects,
+        aiSettings,
+      }).then(suggestion => {
+        set({ nextSuggestion: suggestion, nextSuggestionLoading: false })
+      }).catch(() => {
+        set({ nextSuggestionLoading: false })
+      })
+    } else {
+      set({ nextSuggestionLoading: false })
+    }
   },
   scheduleToday: async (id) => {
     const today = todayStr()

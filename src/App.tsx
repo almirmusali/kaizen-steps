@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useStore } from './store/useStore'
-import { Navigation } from './components/features/Navigation'
+import { Navigation }       from './components/features/Navigation'
+import { SuggestionToast }  from './components/features/SuggestionToast'
 import { HomeScreen }       from './screens/Home'
 import { InboxScreen }      from './screens/Inbox'
 import { ProjectsScreen }   from './screens/Projects'
@@ -10,7 +11,10 @@ import { JournalScreen }    from './screens/Journal'
 import { AISettingsScreen } from './screens/AISettings'
 
 export default function App() {
-  const { screen, theme, loadAll } = useStore()
+  const {
+    screen, theme, loadAll,
+    goals, nextSuggestion, dismissSuggestion, scheduleToday,
+  } = useStore()
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark')
@@ -38,6 +42,17 @@ export default function App() {
           {screens[screen]}
         </main>
       </div>
+
+      {/* Тост «следующий шаг» — всплывает после завершения любой задачи */}
+      <SuggestionToast
+        suggestion={nextSuggestion}
+        goals={goals}
+        onAccept={(taskId) => {
+          scheduleToday(taskId)
+          dismissSuggestion()
+        }}
+        onDismiss={dismissSuggestion}
+      />
     </div>
   )
 }
