@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, TrendingDown } from 'lucide-react'
+import { Plus, TrendingDown, Download, Loader2 } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { Button } from '../components/ui/Button'
 import { Input, Textarea } from '../components/ui/Input'
@@ -7,6 +7,7 @@ import { Modal } from '../components/ui/Modal'
 import { GoalBadge } from '../components/ui/Badge'
 import { ru } from '../i18n/ru'
 import { formatTime } from '../utils/date'
+import { seedPlan, isSeedLoaded } from '../utils/seed'
 
 const COLORS = [
   '#22c55e', '#3b82f6', '#f59e0b', '#ec4899',
@@ -14,10 +15,30 @@ const COLORS = [
 ]
 
 export function GoalsScreen() {
-  const { goals, projects, tasks, addGoal, archiveGoal } = useStore()
+  const { goals, projects, tasks, addGoal, archiveGoal, loadAll } = useStore()
 
-  const [showAdd, setShowAdd]   = useState(false)
-  const [newTitle, setNewTitle] = useState('')
+  const [showAdd, setShowAdd]     = useState(false)
+  const [newTitle, setNewTitle]   = useState('')
+  const [seeding, setSeeding]     = useState(false)
+  const [seedDone, setSeedDone]   = useState(false)
+  const [seedError, setSeedError] = useState('')
+
+  const handleSeed = async () => {
+    setSeeding(true)
+    setSeedError('')
+    try {
+      const already = await isSeedLoaded()
+      if (already) { setSeedError('План уже загружен'); setSeeding(false); return }
+      const result = await seedPlan()
+      await loadAll()
+      setSeedDone(true)
+      console.log('Загружено:', result)
+    } catch (e) {
+      setSeedError(e instanceof Error ? e.message : 'Ошибка загрузки')
+    } finally {
+      setSeeding(false)
+    }
+  }
   const [newDesc, setNewDesc]   = useState('')
   const [newColor, setNewColor] = useState(COLORS[0])
 
@@ -54,8 +75,34 @@ export function GoalsScreen() {
         </Button>
       </div>
 
-      {goals.length === 0 && (
-        <div className="text-center py-16 text-surface-400">
+      {/* ── Баннер загрузки стартового плана ── */}
+      {!seedDone && goals.length === 0 && (
+        <div className="rounded-2xl border-2 border-dashed border-accent-200 dark:border-accent-800 bg-accent-50/50 dark:bg-accent-900/10 p-5 space-y-3">
+          <div>
+            <p className="font-medium text-surface-800 dark:text-surface-100">Загрузить стартовый план</p>
+            <p className="text-sm text-surface-500 mt-1">
+              12 недель, 4 проекта, 71 задача — запуск YouTube-канала по методике кайдзен. Одно нажатие.
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <Button variant="primary" size="sm" onClick={handleSeed} disabled={seeding}>
+              {seeding
+                ? <><Loader2 size={14} className="animate-spin" /> Загружаю…</>
+                : <><Download size={14} /> Загрузить план</>
+              }
+            </Button>
+            {seedError && <p className="text-xs text-red-500">{seedError}</p>}
+          </div>
+        </div>
+      )}
+      {seedDone && (
+        <div className="rounded-2xl bg-accent-50 dark:bg-accent-900/20 border border-accent-200 dark:border-accent-800 px-4 py-3 text-sm text-accent-700 dark:text-accent-300">
+          ✓ Загружено: 1 цель, 4 проекта, 67 задач. Смотри в разделе «Проекты».
+        </div>
+      )}
+
+      {goals.length === 0 && !seedDone && (
+        <div className="text-center py-8 text-surface-400">
           <p>{ru.goals.noGoals}</p>
         </div>
       )}
