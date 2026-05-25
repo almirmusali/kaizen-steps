@@ -7,7 +7,7 @@ import { Modal } from '../components/ui/Modal'
 import { GoalBadge } from '../components/ui/Badge'
 import { ru } from '../i18n/ru'
 import { formatTime } from '../utils/date'
-import { seedPlan, isSeedLoaded } from '../utils/seed'
+import { seedPlan } from '../utils/seed'
 
 const COLORS = [
   '#22c55e', '#3b82f6', '#f59e0b', '#ec4899',
@@ -22,14 +22,16 @@ export function GoalsScreen() {
   const [seeding, setSeeding]     = useState(false)
   const [seedDone, setSeedDone]   = useState(false)
   const [seedError, setSeedError] = useState('')
+  const [showConfirm, setShowConfirm] = useState(false)
 
-  const handleSeed = async () => {
+  const handleSeed = async (force = false) => {
+    // Если данные уже есть и не подтверждено — показываем предупреждение
+    if (!force && goals.length > 0) { setShowConfirm(true); return }
+    setShowConfirm(false)
     setSeeding(true)
     setSeedError('')
     try {
-      const already = await isSeedLoaded()
-      if (already) { setSeedError('План уже загружен'); setSeeding(false); return }
-      const result = await seedPlan()
+      const result = await seedPlan()   // resetAndSeed — удалит всё и загрузит новое
       await loadAll()
       setSeedDone(true)
       console.log('Загружено:', result)
@@ -75,34 +77,54 @@ export function GoalsScreen() {
         </Button>
       </div>
 
-      {/* ── Баннер загрузки стартового плана ── */}
-      {!seedDone && goals.length === 0 && (
+      {/* ── Баннер загрузки / обновления плана ── */}
+      {!seedDone && (
         <div className="rounded-2xl border-2 border-dashed border-accent-200 dark:border-accent-800 bg-accent-50/50 dark:bg-accent-900/10 p-5 space-y-3">
           <div>
-            <p className="font-medium text-surface-800 dark:text-surface-100">Загрузить стартовый план</p>
+            <p className="font-medium text-surface-800 dark:text-surface-100">
+              {goals.length === 0 ? 'Загрузить стартовый план' : 'Обновить план (v2)'}
+            </p>
             <p className="text-sm text-surface-500 mt-1">
-              12 недель, 4 проекта, 71 задача — запуск YouTube-канала по методике кайдзен. Одно нажатие.
+              12 недель, 5 этапов, 70 задач — запуск YouTube-канала с зависимостями и порядком.
+              {goals.length > 0 && <span className="text-amber-500"> Текущие данные будут заменены.</span>}
             </p>
           </div>
-          <div className="flex items-center gap-3">
-            <Button variant="primary" size="sm" onClick={handleSeed} disabled={seeding}>
-              {seeding
-                ? <><Loader2 size={14} className="animate-spin" /> Загружаю…</>
-                : <><Download size={14} /> Загрузить план</>
-              }
-            </Button>
-            {seedError && <p className="text-xs text-red-500">{seedError}</p>}
-          </div>
+
+          {/* Диалог подтверждения */}
+          {showConfirm ? (
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-amber-600 dark:text-amber-400">
+                Удалить все текущие задачи и цели и загрузить новый план?
+              </p>
+              <div className="flex gap-2">
+                <Button variant="danger" size="sm" onClick={() => handleSeed(true)} disabled={seeding}>
+                  {seeding ? <><Loader2 size={14} className="animate-spin" /> Удаляю…</> : 'Да, заменить всё'}
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setShowConfirm(false)}>Отмена</Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3">
+              <Button variant="primary" size="sm" onClick={() => handleSeed()} disabled={seeding}>
+                {seeding
+                  ? <><Loader2 size={14} className="animate-spin" /> Загружаю…</>
+                  : <><Download size={14} /> {goals.length === 0 ? 'Загрузить план' : 'Обновить план'}</>
+                }
+              </Button>
+              {seedError && <p className="text-xs text-red-500">{seedError}</p>}
+            </div>
+          )}
         </div>
       )}
+
       {seedDone && (
         <div className="rounded-2xl bg-accent-50 dark:bg-accent-900/20 border border-accent-200 dark:border-accent-800 px-4 py-3 text-sm text-accent-700 dark:text-accent-300">
-          ✓ Загружено: 1 цель, 4 проекта, 67 задач. Смотри в разделе «Проекты».
+          ✓ Загружено: 1 цель, 5 этапов-проектов, 70 задач. Смотри в «Проектах».
         </div>
       )}
 
       {goals.length === 0 && !seedDone && (
-        <div className="text-center py-8 text-surface-400">
+        <div className="text-center py-4 text-surface-400">
           <p>{ru.goals.noGoals}</p>
         </div>
       )}
